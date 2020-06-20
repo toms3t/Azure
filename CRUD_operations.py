@@ -31,7 +31,7 @@ def query_items(email):
     ):
         return(json.dumps(item, indent=True))
 
-print(query_items('tomset@outlook.com'))
+print(query_items('email@email.com'))
 
 
 def read_items():
