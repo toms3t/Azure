@@ -13,25 +13,25 @@ phone_num = Secrets.phone_num
 client = CosmosClient(url, key)
 
 database_name = "Contacts"
-container_name = "contacts"
+container_name = "Contacts"
 
 database = client.get_database_client(database_name)
 container = database.get_container_client(container_name)
 
 def read_items(id, partition_key):
-    response = container.read_item(item='1', partition_key=phone_num)
+    response = container.read_item(item='1', partition_key=email)
     return response
 
 # print(read_items('1', phone_num))
 
-def query_items():
+def query_items(email):
     for item in container.query_items(
-        query="SELECT * FROM contacts p WHERE p.phone_num = '{}'".format(phone_num),
+        query="SELECT * FROM Contacts p WHERE p.email_address = '{}'".format(email),
         enable_cross_partition_query=True,
     ):
         return(json.dumps(item, indent=True))
 
-# print(query_items())
+print(query_items('tomset@outlook.com'))
 
 
 def read_items():
@@ -46,14 +46,16 @@ def read_items():
 
 # print(read_items())
 
-def create_items(container, phone_num, name, remind_date):
+def create_items(container, phone_num, first_name, last_name, email, remind_dates):
     print('Creating Items....')
 
     new_reminder = {
         'id': '1',
         'phone_num' : phone_num,
-        'name': name,
-        'remind_date': remind_date
+        'first_name': first_name,
+        'last_name': last_name,
+        'email_address': email,
+        'remind_dates': remind_dates
         }
     try:
         container.create_item(body=new_reminder)
@@ -66,4 +68,4 @@ def create_items(container, phone_num, name, remind_date):
             print(s)
 
 
-# create_items(container, '4444443844', 'Sue', '2020-01-01')
+# create_items(container, '2342342222', 'Tony', 'Smith', 'tfsdfsdfsd987dfsdfs@outlook.com', ['2020-01-01', '2020-01-02'])
