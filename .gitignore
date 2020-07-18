@@ -3,3 +3,4 @@ local.settings.json
 env
 .python_packages
 __pycache__
+email_blob.txt
