@@ -1,69 +1,67 @@
 import datetime
-import logging
-import os
 import json
-import gspread
+import logging
+import subprocess
+
 import azure.functions as func
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-from azure.cosmos import exceptions, CosmosClient, PartitionKey
+import gspread
+from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from oauth2client.service_account import ServiceAccountCredentials
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, template_id
+
 try:
     from ..secrets import Secrets
 except:
     print('Secrets module could not be imported')
 
 
-cosmos_url = Secrets.cosmos_url
-cosmos_key = Secrets.cosmos_key
-sendgrid_key = Secrets.sendgrid_key
-client = CosmosClient(cosmos_url, cosmos_key)
-query_email = Secrets.query_email
-test_from_email = Secrets.test_from_email
-test_to_email = Secrets.test_to_email
+COSMOS_URL = Secrets.cosmos_url
+COSMOS_KEY = Secrets.cosmos_key
+SENDGRID_KEY = Secrets.sendgrid_key
+CLIENT = CosmosClient(COSMOS_URL, COSMOS_KEY)
+QUERY_EMAIL = Secrets.query_email
+TEST_FROM_EMAIL = Secrets.test_from_email
+TEST_TO_EMAIL = Secrets.test_to_email
 GSHEET_CREDS = Secrets.gsheet_creds
 GSHEET_NAME = Secrets.gsheet_name
-HOLIDAYS = ["Valentine's Day", "Professional Assistant's Day", "Mother's Day", 'Thanksgiving', 'Christmas']
-
-database_name = "Contacts"
-container_name = "Contacts"
-
-database = client.get_database_client(database_name)
-container = database.get_container_client(container_name)
+HOLIDAYS_2020 = {'thanksgiving': '11/26/2020', 'christmas': '12/25/2020'}
+HOLIDAYS_2021 = {"valentine_day": '02/14/2021', "assistant_day": '04/21/2021', "mother_day": '05/09/2021', 'thanksgiving': '11/25/2021', 'christmas': '12/25/2021'}
+HOLIDAYS_2022 = {"valentine_day": '02/14/2022', "assistant_day": '04/27/2022', "mother_day": '05/08/2022', 'thanksgiving': '11/24/2022', 'christmas': '12/25/2022'}
+HOLIDAYS_2023 = {"valentine_day": '02/14/2023', "assistant_day": '04/26/2023', "mother_day": '05/14/2023', 'thanksgiving': '11/23/2023', 'christmas': '12/25/2023'}
+DATABASE_NAME= "Contacts"
+CONTAINER_NAME = "Contacts"
+DATABASE = CLIENT.get_database_client(DATABASE_NAME)
+CONTAINER = DATABASE.get_container_client(CONTAINER_NAME)
 
 def gsheet_export(GSHEET_CREDS, GSHEET_NAME):
     customers = []
+    special_name = ''
     scope = [
         'https://spreadsheets.google.com/feeds', 
         'https://www.googleapis.com/auth/drive'
         ]
     credentials = ServiceAccountCredentials.from_json_keyfile_name(GSHEET_CREDS, scope)
-    client = gspread.authorize(credentials)
-    gsheet = client.open(GSHEET_NAME).sheet1
+    gclient = gspread.authorize(credentials)
+    gsheet = gclient.open(GSHEET_NAME).sheet1
     gsheet_data = gsheet.get_all_values()
     for row in gsheet_data[1:]:
-        dates = row[1].split(',')
-        dates = [date.strip() for date in dates]
-        other_event = ''
-        if dates[-1] not in HOLIDAYS:
-            other_event = dates[-1]
+        if row[7] == 'Birthday':
+            special_name = row[11]
+        elif row[7] == 'Anniversary':
+            special_name = row[5]
 
-        customer_reminder_holidays = []
-        other_event_plus_date = {}
-        if other_event:
-            other_event_plus_date[other_event] = row[2]
-            customer_reminder_holidays = dates[:-1]
-        else:
-            customer_reminder_holidays = dates
-
-        first_name, email = row[5], row[3]
+        first_name, email, ann_name, holidays, ann_date, birthday_date, birthday_name = row[5], row[3], row[6], row[1], row[2], row[10], row[-1]
 
         customer_json = {
             'id': '1',
             'first_name': first_name, 
             'email': email, 
-            'holidays': customer_reminder_holidays, 
-            'special_date': other_event_plus_date
+            'holidays': holidays, 
+            'ann_date': ann_date,
+            'birthday_date': birthday_date,
+            'ann_name': ann_name,
+            'birthday_name': birthday_name
             }
         customers.append(customer_json)
 
@@ -72,42 +70,98 @@ def gsheet_export(GSHEET_CREDS, GSHEET_NAME):
 def cosmos_import(customers):
     print('Importing customers to CosmosDB....')
     for customer_json in customers:
-        print(customer_json)
         try:
-            container.create_item(body=customer_json)
+            CONTAINER.create_item(body=customer_json)
             print('Customer added successfully')
         except Exception as e:
             s = str(e)
-            if "id already exists in the system":
+            if "id already exists in the system" in s:
                 print('The customer already exists in the database')
             else:
                 print(s)
 
-def find_customers_to_remind():
-    pass
+def reminder_date_check(special_date):
+    pattern = re.compile('(\d+)\/(\d+)\/(\d+)')
+    try:
+        special_month, special_day, special_year = int(re.search(pattern, special_date).group(1)), int(re.search(pattern, special_date).group(2)), int(re.search(pattern, special_date).group(3))
+        special_date_obj = datetime.date(year=special_year, month=special_month, day=special_day)
+    except AttributeError:
+        return False
+    today = datetime.date.today()
+    date_diff = str(special_date_obj - today)
+    try:
+        date_diff = int(re.search('(.*) day', date_diff).group(1))
+    except AttributeError:
+        return False
+    if date_diff <= 6 and date_diff >= 0:
+        return True
+    return False
+
+def get_new_customer_reminders():
+    documents = list(CONTAINER.read_all_items(max_item_count=8000))
+    print('Found {0} items'.format(item_list.__len__()))
+    birthday_reminders = {}
+    ann_reminders = {}
+    holiday_reminders = {}
+    pattern = re.compile('(\d+)\/(\d+)\/(\d+)')
+    for cust_doc in documents:
+        # print(cust_doc)
+        try:
+            birthday_date = cust_doc['birthday_date']
+            birthday_name = cust_doc['birthday_name']
+            if reminder_date_check(birthday_date):
+                birthday_reminders[cust_doc['email']] = (birthday_name, birthday_date)
+        except KeyError:
+            pass
+        try: 
+            ann_date = cust_doc['ann_date']
+            ann_name = cust_doc['ann_name']
+            if reminder_date_check(ann_date):
+                ann_reminders[cust_doc['email']] = (ann_name, ann_date)
+        except KeyError:
+            pass
+        try:
+            holidays = cust_doc['holidays']
+            for holiday in holidays:
+                if reminder_date_check(holiday):
+                    holiday_reminders[cust_doc['email']] = holiday
+        except KeyError:
+            pass
+    return birthday_reminders, ann_reminders, holiday_reminders
 
 def cosmos_query_items(email_address):
-    for item in container.query_items(
+    for item in CONTAINER.query_items(
         query="SELECT * FROM Contacts p WHERE p.email = '{}'".format(query_email),
         enable_cross_partition_query=True,
     ):
         return(json.dumps(item, indent=True))
 
+def email_customers(from_address, to_address, special_name, template_id):
+    curl_cmd = """
+            curl -X "POST" "https://api.sendgrid.com/v3/mail/send" \
+            -H 'Authorization: Bearer {}' \
+            -H 'Content-Type: application/json' \
+            -d '{{
+        "from":{{
+            "email":"{}"
+        }},
+        "personalizations":[ 
+            {{
+                "to":[
+                    {{
+                    "email":"{}"
+                    }}
+                ],
+                "dynamic_template_data":{{
+                    "special_name":"{}"
+                }}
+            }}
+        ],
+        "template_id":"{}"
+        }}'
+        """.format(SENDGRID_KEY, from_address, to_address, special_name, template_id)
+    subprocess.check_output(curl_cmd, shell=True, universal_newlines=True)
 
-def send_mail(to_address, from_address, body):
-    message = Mail(
-        from_email='{}'.format(from_address),
-        to_emails='{}'.format(to_address),
-        subject='Testing!',
-        html_content='{}'.format(body))
-    try:
-        sg = SendGridAPIClient(sendgrid_key)
-        response = sg.send(message)
-        print(response.status_code)
-        print(response.body)
-        print(response.headers)
-    except Exception as e:
-        print(e.message)
 
 def main(mytimer: func.TimerRequest) -> None:
     utc_timestamp = datetime.datetime.utcnow().replace(
@@ -119,8 +173,8 @@ def main(mytimer: func.TimerRequest) -> None:
 
     customer_list = gsheet_export(GSHEET_CREDS, GSHEET_NAME)
     cosmos_import(customer_list)
-    cosmos_json = cosmos_query_items(query_email)
-    # send_mail(test_to_email, test_from_email, cosmos_json)
-    
+    # cosmos_json = cosmos_query_items(query_email)
+    birthday_reminders, ann_reminders, holiday_reminders = get_new_customer_reminders()
+    # if birthday_reminders:
 
-    
+    # send_mail(test_to_email, test_from_email, cosmos_json)
