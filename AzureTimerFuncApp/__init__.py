@@ -25,7 +25,7 @@ TEST_FROM_EMAIL = Secrets.test_from_email
 TEST_TO_EMAIL = Secrets.test_to_email
 GSHEET_CREDS = Secrets.gsheet_creds
 GSHEET_NAME = Secrets.gsheet_name
-HOLIDAYS_2020 = {'thanksgiving': '11/26/2020', 'christmas': '12/25/2020'}
+HOLIDAYS_2020 = {'test_holiday': '07/29/2020', 'thanksgiving': '11/26/2020', 'christmas': '12/25/2020'}
 HOLIDAYS_2021 = {"valentine_day": '02/14/2021', "assistant_day": '04/21/2021', "mother_day": '05/09/2021', 'thanksgiving': '11/25/2021', 'christmas': '12/25/2021'}
 HOLIDAYS_2022 = {"valentine_day": '02/14/2022', "assistant_day": '04/27/2022', "mother_day": '05/08/2022', 'thanksgiving': '11/24/2022', 'christmas': '12/25/2022'}
 HOLIDAYS_2023 = {"valentine_day": '02/14/2023', "assistant_day": '04/26/2023', "mother_day": '05/14/2023', 'thanksgiving': '11/23/2023', 'christmas': '12/25/2023'}
@@ -136,7 +136,7 @@ def cosmos_query_items(email_address):
     ):
         return(json.dumps(item, indent=True))
 
-def email_customers(from_address, to_address, special_name, template_id):
+def email_customers(from_address, to_address, template_id, special_name=None):
     curl_cmd = """
             curl -X "POST" "https://api.sendgrid.com/v3/mail/send" \
             -H 'Authorization: Bearer {}' \
@@ -159,7 +159,7 @@ def email_customers(from_address, to_address, special_name, template_id):
         ],
         "template_id":"{}"
         }}'
-        """.format(SENDGRID_KEY, from_address, to_address, special_name, template_id)
+        """.format(SENDGRID_KEY, from_address, to_address, template_id, special_name)
     subprocess.check_output(curl_cmd, shell=True, universal_newlines=True)
 
 
@@ -171,10 +171,33 @@ def main(mytimer: func.TimerRequest) -> None:
 
     logging.info('Python timer trigger function ran at %s', utc_timestamp)
 
+    bday_template = sendgrid_template_ids['bday']
+    mothers_day_template = sendgrid_template_ids['mothers']
+    valentines_day_template = sendgrid_template_ids['valentines']
+    thanksgiving_template = sendgrid_template_ids['thanksgiving']
+    xmas_template = sendgrid_template_ids['xmas']
+    assistant_day_template = sendgrid_template_ids['assistant']
+    anniversary_template = sendgrid_template_ids['anniversary']
     customer_list = gsheet_export(GSHEET_CREDS, GSHEET_NAME)
     cosmos_import(customer_list)
-    # cosmos_json = cosmos_query_items(query_email)
     birthday_reminders, ann_reminders, holiday_reminders = get_new_customer_reminders()
-    # if birthday_reminders:
+    from_address = TEST_FROM_EMAIL
+    if birthday_reminders:
+        for k,v in birthday_reminders.items():
+            email_customers(from_address, k, bday_template, k[v][0])
+    if ann_reminders:
+        for k,v in ann_reminders.items():
+            email_customers(from_address, k, anniversary_template, k[v][0])
+    if holiday_reminders:
+        for k,v in holiday_reminders.items():
+            if v == 'Thanksgiving':
+                email_customers(from_address, k, thanksgiving_template)
+            if v == "Mother's Day":
+                email_customers(from_address, k, mothers_day_template)
+            if v == 'Christmas':
+                email_customers(from_address, k, xmas_template)
+            if v == "Professional Assistant's Day":
+                email_customers(from_address, k, assistant_day_template)
+            if v == "Valentine's Day":
+                email_customers(from_address, k, valentines_day_template)
 
-    # send_mail(test_to_email, test_from_email, cosmos_json)
