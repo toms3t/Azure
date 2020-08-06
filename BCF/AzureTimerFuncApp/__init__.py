@@ -140,7 +140,7 @@ def reminder_date_check(special_date):
         date_diff = int(re.search("(.*) day", date_diff).group(1))
     except AttributeError:
         return False
-    if date_diff <= 6 and date_diff >= 0:
+    if date_diff == 4:
         return True
     return False
 
