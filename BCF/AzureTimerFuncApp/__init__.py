@@ -1,10 +1,11 @@
+import os
+import logging
+import sys
 import datetime
 import json
-import logging
 import subprocess
 import time
 import re
-
 import azure.functions as func
 import gspread
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
@@ -12,27 +13,28 @@ from oauth2client.service_account import ServiceAccountCredentials
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, template_id
 
-try:
-    from ..secrets import Secrets
-except:
-    print("Secrets module could not be imported")
-
-
-COSMOS_URL = Secrets.cosmos_url
-COSMOS_KEY = Secrets.cosmos_key
-SENDGRID_KEY = Secrets.sendgrid_key
-SENDGRID_TEMPLATE_IDS = Secrets.sendgrid_template_ids
+COSMOS_URL = os.environ["cosmosurl"]
+COSMOS_KEY = os.environ["cosmoskey"]
+SENDGRID_KEY = os.environ["sendgridkey"]
 CLIENT = CosmosClient(COSMOS_URL, COSMOS_KEY)
-QUERY_EMAIL = Secrets.query_email
-TEST_FROM_EMAIL = Secrets.test_from_email
-TEST_TO_EMAIL = Secrets.test_to_email
-GSHEET_CREDS = Secrets.gsheet_creds
-GSHEET_NAME = Secrets.gsheet_name
+TEST_FROM_EMAIL = os.environ["testfromemail"]
+TEST_TO_EMAIL = os.environ["testtoemail"]
+GSHEET_CREDS = 'mom-bcf-08ecb424585b.json'
+GSHEET_NAME = os.environ["gsheetname"]
+SENDGRID_TEMPLATE_IDS = {
+        'mothers': 'd-c0edb45cb3944858bb5da0f8dd6a4aae',
+        'valentines': 'd-98b5e054c7c34a60a0b75ccc56f06e91',
+        'thanksgiving': 'd-440180cc64604c93818ff43dbe303237',
+        'xmas': 'd-ec3285516ba2447c9b3da757362a6288',
+        'assistant': 'd-c6b65434077b4a75bf22d93d91e8770d',
+        'bday': 'd-95d8e9419134400fafc8235fe3302860',
+        'anniversary': 'd-1d41cccd08be40b18e56d63d62dcd1b2'
+    }
 HOLIDAYS_2020 = {
     "Valentine's Day": "02/14/2020",
     "Mother's Day": "5/27/2020",
     "Professional Assistant's Day": "04/21/2020",
-    "Test Holiday": "07/29/2020",
+    "Test Holiday": "08/09/2020",
     "Thanksgiving": "11/26/2020",
     "Christmas": "12/25/2020",
 }
@@ -239,6 +241,8 @@ def main(mytimer: func.TimerRequest) -> None:
     utc_timestamp = (
         datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
     )
+    email = os.environ["cosmoskey"]
+
     if mytimer.past_due:
         logging.info("The timer is past due!")
 
@@ -252,7 +256,6 @@ def main(mytimer: func.TimerRequest) -> None:
     assistant_day_template = SENDGRID_TEMPLATE_IDS["assistant"]
     anniversary_template = SENDGRID_TEMPLATE_IDS["anniversary"]
     customer_list = gsheet_export(GSHEET_CREDS, GSHEET_NAME)
-
     cosmos_import(customer_list)
     time.sleep(10)
     birthday_reminders, ann_reminders, holiday_reminders = get_new_customer_reminders()
