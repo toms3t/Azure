@@ -61,12 +61,6 @@ resource "azurerm_storage_account" "storage_account1" {
   account_replication_type  = "LRS"
 }
 
-resource "azurerm_storage_container" "storage_container1" {
-  name                  = "vhds"
-  storage_account_name  = "${azurerm_storage_account.storage_account1.name}"
-  container_access_type = "private"
-}
-
 resource "azurerm_public_ip" "public_ip1" {
   name                         = "${var.config["public_ip_address_name"]}"
   location                     = "${var.resource_group_location}"
@@ -121,20 +115,10 @@ resource "azurerm_virtual_machine" "virtual_machine1" {
     sku       = "${lookup(var.ubuntu_os_version_map, var.ubuntu_os_version)}"
     version   = "latest"
   }
-
   storage_os_disk {
-    name          = "osdisk1"
-    vhd_uri       = "${azurerm_storage_account.storage_account1.primary_blob_endpoint}${azurerm_storage_container.storage_container1.name}/osdisk1.vhd"
-    caching       = "ReadWrite"
-    create_option = "FromImage"
-  }
-
-  storage_data_disk {
-    name          = "datadisk0"
-    vhd_uri       = "${azurerm_storage_account.storage_account1.primary_blob_endpoint}${azurerm_storage_container.storage_container1.name}/datadisk0.vhd"
-    disk_size_gb  = "1023"
-    create_option = "Empty"
-    lun           = 0
+    name                 = "myOsDisk"
+    caching              = "ReadWrite"
+    create_option        = "FromImage"
   }
 
   os_profile_linux_config {
