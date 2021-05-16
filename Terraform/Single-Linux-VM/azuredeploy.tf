@@ -35,7 +35,7 @@ variable "config" {
   default = {
     "image_publisher"        = "Canonical"
     "image_offer"            = "UbuntuServer"
-    "nic_name"               = "VMNic"
+    "nic_name"               = "vmnic"
     "address_prefix"         = "10.0.0.0/16"
     "subnet_name"            = "Subnet"
     "subnet_prefix"          = "10.0.0.0/24"
@@ -90,7 +90,7 @@ resource "azurerm_subnet" "subnet1" {
 }
 
 resource "azurerm_network_interface" "network_interface1" {
-  name                = "${var.config["nic_name"]}"
+  name                = "${var.vm_name}-NIC"
   location            = "${var.resource_group_location}"
   resource_group_name = "${azurerm_resource_group.resource_group.name}"
 
