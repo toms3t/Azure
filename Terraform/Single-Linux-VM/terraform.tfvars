@@ -8,6 +8,6 @@ resource_group_location = "East US"
 
 resource_group_name = "LinuxRG"
 
-ubuntu_os_version = "16.04.0-LTS"
+ubuntu_os_version = "18.04-LTS"
 
 admin_sshkey = "REPLACE_WITH_SSH_PUBLICKEY"
