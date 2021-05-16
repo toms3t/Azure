@@ -23,6 +23,6 @@ variable "ubuntu_os_version" {
 }
 
 variable "admin_sshkey" {
-  type        = "string"
+  type        = string
   description = "SSH key for authentication to the VM"
 }

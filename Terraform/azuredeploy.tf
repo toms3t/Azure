@@ -1,3 +1,15 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "=2.59.0"
+    }
+  }
+}
+provider "azurerm" {
+  features {}
+}
+
 resource "random_id" "storage_account_name" {
   keepers = {
     resource_group = "${var.resource_group_name}"
@@ -6,18 +18,19 @@ resource "random_id" "storage_account_name" {
   byte_length = 8
 }
 variable "ubuntu_os_version_map" {
-  type = "map"
+  type = map(string)
 
   default = {
     "12.04.5-LTS" = "12.04.5-LTS"
     "14.04.5-LTS" = "14.04.5-LTS"
     "15.10"       = "15.10"
     "16.04.0-LTS" = "16.04.0-LTS"
+    "18.04-LTS"   = "18.04-LTS"
   }
 }
 
 variable "config" {
-  type = "map"
+  type = map(string)
 
   default = {
     "image_publisher"        = "Canonical"
@@ -29,7 +42,7 @@ variable "config" {
     "storage_account_type"   = "Standard_LRS"
     "public_ip_address_name" = "PublicIP"
     "public_ip_address_type" = "Dynamic"
-    "vm_name"                = "admin1"
+    "vm_name"                = "vm1"
     "vm_size"                = "Standard_A1"
     "virtual_network_name"   = "VNET"
   }
@@ -41,15 +54,15 @@ resource "azurerm_resource_group" "resource_group" {
 }
 
 resource "azurerm_storage_account" "storage_account1" {
-  name                = "${random_id.storage_account_name.hex}"
-  resource_group_name = "${azurerm_resource_group.resource_group.name}"
-  location            = "${var.resource_group_location}"
-  account_type        = "${var.config["storage_account_type"]}"
+  name                      = "${random_id.storage_account_name.hex}"
+  resource_group_name       = "${azurerm_resource_group.resource_group.name}"
+  location                  = "${var.resource_group_location}"
+  account_tier              = "Standard"
+  account_replication_type  = "LRS"
 }
 
 resource "azurerm_storage_container" "storage_container1" {
   name                  = "vhds"
-  resource_group_name   = "${azurerm_resource_group.resource_group.name}"
   storage_account_name  = "${azurerm_storage_account.storage_account1.name}"
   container_access_type = "private"
 }
@@ -58,8 +71,8 @@ resource "azurerm_public_ip" "public_ip1" {
   name                         = "${var.config["public_ip_address_name"]}"
   location                     = "${var.resource_group_location}"
   resource_group_name          = "${azurerm_resource_group.resource_group.name}"
-  public_ip_address_allocation = "${var.config["public_ip_address_type"]}"
   domain_name_label            = "${var.dns_label_prefix}"
+  allocation_method            = "Dynamic"
 }
 
 resource "azurerm_virtual_network" "virtual_network1" {
@@ -70,10 +83,10 @@ resource "azurerm_virtual_network" "virtual_network1" {
 }
 
 resource "azurerm_subnet" "subnet1" {
-  name                 = "${var.config["subnet_name"]}"
-  resource_group_name  = "${azurerm_resource_group.resource_group.name}"
-  virtual_network_name = "${azurerm_virtual_network.virtual_network1.name}"
-  address_prefix       = "${var.config["subnet_prefix"]}"
+  name                  = "${var.config["subnet_name"]}"
+  resource_group_name   = "${azurerm_resource_group.resource_group.name}"
+  virtual_network_name  = "${azurerm_virtual_network.virtual_network1.name}"
+  address_prefixes      = ["10.0.0.0/24"]
 }
 
 resource "azurerm_network_interface" "network_interface1" {
@@ -132,7 +145,7 @@ resource "azurerm_virtual_machine" "virtual_machine1" {
       key_data = "${var.admin_sshkey}"
     }
   }
-
+  
   boot_diagnostics {
     enabled     = "true"
     storage_uri = "${azurerm_storage_account.storage_account1.primary_blob_endpoint}"
